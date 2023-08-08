@@ -4,20 +4,24 @@ format:
   html:
     embed-resources: true
 toc: true
+execute:
+  warning: false
 ---
 
 ## Brief Summary
 
 -   Logistic regression is a method used to model the relationship between one or more IVs and a dichotomous DV
 
--   While linear regression predicts actual values on a DV, logistic regression predicts the odds of the DV occurring vs not occurring
+-   While linear regression predicts actual values on a DV, logistic regression predicts the probability of the DV occurring
+
+-   While linear regression coefficients represent the slope of the relationship between $X$ and $Y$, logistic regression coefficients are (sometimes log-transformed) odds ratios
 
 ## Theory
 
 Regression is a way to model the relationship between one or more independent variables (IVs) and one dependent variable (DV). When your dependent variable is continuous, this is achieved through *linear regression* (aka "ordinary least squares (OLS) regression"). But what happens when our DV is dichotomous?
 
 ::: callout-note
-## Review
+### Review
 
 Linear regression assumes that our *residuals* - the difference between the model's predicted values and the actual values of the DV in our data - are just *random noise*. Practically speaking, this means that residuals must be (a) normally distributed and (b) show homoscedasticity (constant variance across levels of the IV or IVs).
 :::
@@ -27,8 +31,14 @@ If we try to conduct a linear regression with a dichotomous outcome, we break th
 **Research Question:** Is a passenger's ticket fare (IV) associated with passenger survival (DV)?
 
 ```{r}
+# Load packages
+library(tidyverse)
 library(titanic)
+
+# Load titanic_train dataset from the titanic package
 data("titanic_train")
+
+# Describe the titanic_train dataset
 str(titanic_train)
 ```
 
@@ -64,14 +74,19 @@ But of course, no Titanic passenger can only 40% survive; you either survive (1)
 
 ### What does logistic regression predict?
 
-The logistic model predicts the *probability of a dichotomous outcome occurring*. At the lower end, the logistic model may predict a probability of 0, and at the higher end, 1. Unlike linear regression's straight line, the logistic regression curve has an "S" shape:
+The logistic model predicts the *probability of a dichotomous outcome occurring*. The probability of some event happening is defined as the number of times the event occurrs divided by the total number of trials, or times that the event could have occurred.
+
+$p(event)=\frac{number\ of\ events}{number\ of\ trials}$
+
+For example, the probability of rolling a six on a six-sided die is 1/6. If an event happens 100% of the time (e.g., rolling a number between one and six), its probability is 1, and if it happens 0% of the time (e.g., rolling a seven), its probability is 0.
+
+The logistic model is responsible for predicting probabilities. At the lower end, the logistic model may predict a probability of 0, and at the higher end, 1. Because probabilities are all between 0 and 1, the logistic regression line has to stay between 0 and 1. This is accomplished by giving the logistic regression curve an "S" shape:
 
 ![](https://miro.medium.com/v2/resize:fit:640/format:webp/1*pd_Iaq4P8llKi_3iloNhEA.png)
 
 Here is a visual of both regression lines, as applied to our Titanic dataset:
 
 ```{r}
-library(tidyverse)
 titanic_train %>%
   drop_na(Fare, Survived) %>%
   ggplot(aes(x = Fare, y = Survived)) +
@@ -80,7 +95,7 @@ titanic_train %>%
   geom_smooth(method = "glm", formula = y ~ x, se = F, color = "blue", method.args = list(family = binomial))
 ```
 
-Clearly, our logistic regression line (blue) is a better fit to the data. Note that depending on the relationship between your IV(s) and DV, you may not always see the full "S"-shape; in this case, we only see the top half. You might also see a reversed "S", as in survival by age:
+Clearly, our logistic regression line (blue) is a better fit to the data, since it stays between 0 and 1. Note that depending on the relationship between your IV(s) and DV, you may not always see the full "S"-shape; in this case, we only see the top half. You might also see a reversed "S", as in survival by age:
 
 ```{r}
 titanic_train %>%
@@ -92,11 +107,25 @@ titanic_train %>%
 
 In this case, the line even looks approximately straight. That's because the relationship is so weak that you're only seeing the very middle of the "S" (and *very* stretched out). However, this is still the logistic curve; it is predicting the *probability* of survival, and will never predict less than 0 or greater than 1.
 
+### How do we predict probability?
+
+As with other regressions with non-continuous DVs, logistic regression predicts probability by applying a "link function" to the general linear model. In logistic regression, the link function is called the "logit function." In order to predict the probability of some event ($p$), we transform it by taking the logarithm of the odds of the event:
+
+$logit(p) = ln(odds) = ln(\frac{p}{1-p})$
+
+This takes a non-continuous variable, $p$, and turns it into a variable that we can predict linearly (i.e., with a straight line): $logit(p)$. The logit link function plugs right into the general linear model:
+
+$logit(p)=\beta_0+\beta_1X_1+\epsilon$
+
+$ln(\frac{p}{1-p})=\beta_0+\beta_1X_1+\epsilon$
+
+The letters on the right are the typical linear regression equation. By using the link function $logit(p)$, logistic regression takes a value that can't be predicted with a linear model ($p$), and turns it into something that can be.
+
 ### What are the "odds"?
 
 When you report a logistic regression, you will be reporting something called an "odds ratio." Before we talk about what an odds ratio is, we should clarify the difference between "odds" and "probability".
 
-The probability, *p*, is the chance that something happens; it can range from 0 (no chance) to 1 (completely certain). It can also be expressed in terms of percents; from 0% to 100%.
+The probability, *p*, is the chance that something happens; it can range from 0 (definitely not) to 1 (completely certain). It can also be expressed in terms of percents; from 0% to 100%.
 
 The *odds* of something happening is another way to express how likely it is. However, odds are written as the *ratio* of the event happening to the event not happening. For example, if the odds of a horse winning a race are given as 3:2, that means that we expect the horse to win 3 races for every 2 races lost. If the odds are 1:10, we expect the horse to win 1 race for every 10 races lost. Odds relate to probability as follows:
 
@@ -114,7 +143,9 @@ The *odds* of something happening is another way to express how likely it is. Ho
 | .9                   | .1                      | 9:1         |
 | 1                    | 0                       | 1:0, or Inf |
 
-In other words, odds = *p* / (1 - *p*)
+In other words:
+
+$odds = \frac{p}{1-p}$
 
 The *odds ratio* describes the relative odds of two things happening; for example, the odds of surviving the Titanic as a woman versus the odds of surviving the Titanic as a man. According to our data, .74 (or 74%) of women survived while only .19 (or 19%) of men survived.
 
@@ -130,7 +161,7 @@ Note the difference between the odds ratio (14) and the relative probability (.7
 
 ### "Log Odds"
 
-In order to estimate odds , logistic regression has to transform everything via the natural logarithm. We won't get into the "how" or "why" here, but suffice to say that by default, the `glm()` function in R will present your regression coefficients in terms of the natural logarithm of the odds ratio, aka the "log odds." In order to get the odds ratio, we use the `exp()` function to reverse the logarithmic transformation; `odds_ratio = exp(log_odds)`. When log odds are positive, the odds ratio is greater than 1, and when log odds are negative, the odds ratio is less than 1.
+Recall that because of the logit link function (see above), logistic regression doesn't work directly with probabilities ($p$), but rather with the *log odds* of the probability ($logit(p)$). This is reflected in the logistic regression output, which presents its odds ratios in units of log odds. These are generally hard to interpret and not super useful. However, we can transform these log odds ratios back into normal odds ratios with the `exp()` function. We use the `exp()` function to reverse the logarithmic transformation; `odds_ratio = exp(log_odds)`. When log odds are positive, the odds ratio is greater than 1, and when log odds are negative, the odds ratio is less than 1.
 
 ## Application
 
@@ -151,7 +182,7 @@ survival_by_sex <- glm(
 summary(survival_by_sex)
 ```
 
-The model output tells us that male sex is significantly associated with survival (*p* \< .001), with a log odds of -2.5. We can transform that number into an odds ratio like this:
+The model output tells us that male sex is significantly associated with survival relative to female sex (*p* \< .001), with a log odds ratio of -2.5. We can transform that number into an odds ratio like this:
 
 ```{r}
 exp(-2.5)
@@ -199,7 +230,7 @@ Relative to first class (the reference group), second class passengers were less
 
 ### Logistic regression with one continuous IV
 
-With dichotomous (or dummy-coded) IVs, logistic regression calculates the odds ratio as the odds of the outcome occurring when the IV equals 1, relative to the odds of the outcome occurring when the IV equals 0. With continuous IVs, the odds ratio represents the odds of the outcome occurring when the IV equals X, relative to the odds of the outcome occurring when the IV equals X - 1. For example, consider a logistic regression of survival by age:
+With dichotomous (or dummy-coded) IVs, logistic regression calculates the odds ratio as the odds of the outcome occurring when the IV is true (or 1), relative to the odds of the outcome occurring when the IV is false (or 0). With continuous IVs, the odds ratio represents the odds of the outcome occurring when the IV equals X, relative to the odds of the outcome occurring when the IV equals X - 1. For example, consider a logistic regression of survival by age:
 
 ```{r}
 survival_by_age <- glm(
@@ -234,7 +265,7 @@ This is a little easier to interpret. The *p*-value is the same as in the initia
 
 ### Logistic regression with multiple IVs
 
-As with linear regression, logistic regression can incorporate multiple IVs simultaneously. As with linear regression, you interpret each coefficient as the odds ratio (or log odds, in the default output) associated with that IV after controlling for the effect of the other IV(s).
+As with linear regression, logistic regression can incorporate multiple IVs simultaneously. You interpret each coefficient as the odds ratio (or log odds ratio, in the default output) associated with that IV after controlling for the effect of the other IV(s).
 
 Let's put everything together with a logistic regression predicting survival given age, sex, and ticket class:
 
@@ -263,6 +294,9 @@ You can use the package `stargazer` to print pretty tables of each regression, e
 ```{r}
 #| results: "asis"
 library(stargazer)
+
+transform_se <- function(x)
+
 stargazer(
   survival_by_age, 
   survival_by_sex,
@@ -271,3 +305,49 @@ stargazer(
   type = "html"
 )
 ```
+
+### Fitting logistic regression models
+
+In the above examples, R estimated the coefficients of each model using a method known as "maximum likelihood estimation." While ordinary least squares regression coefficients can be estimated analytically (by minimizing the sum of the squared residuals), the same can't be done for logistic regression. Instead, R has to repeatedly make guesses about the coefficients in the model and evaluate those guesses in order to (hopefully) converge on a model that seems to fit the data reasonably well.
+
+This process is iterative:
+
+1.  Take a guess at possible coefficients
+2.  Ask: How likely would we be to see our data, if this was the underlying relationship?
+3.  Repeat this process with additional guesses and pick the guess with the highest likelihood
+
+When guesses "converge" on a reasonably good set of coefficients (i.e., we stop getting meaningful incremental benefits from additional guesses), R calls it a day and presents its estimated results.
+
+Reporting the goodness of fit in logistic regressions is not as straightforward as it is in linear regression, where we can report $R^2$. There are a variety of so-called "pseudo-$R^2$s" that can be calculated for a logistic regression, however, they are not easily interpretable and are not widely reported.
+
+$R_L^2$ is, like linear regression's $R^2$, a ratio. However, while $R^2$ is a ratio of the variance explained by the model compared to total variance in the outcome, $R_L^2$ is a ratio of the *deviance* explained by a model divided by the total possible deviance. Deviance is a function of the difference between the likelihood of the estimated model and the likelihood of a hypothetical perfect model. The total possible deviance is given by $D_{null}$, which represents how far off the worst possible logistic model (an intercept-only model) is from a hypothetical perfect model:
+
+$D_{null}=-2[ln(L_{null})-ln(L_{perfect})]$
+
+The deviance of the estimated model (with $k$ independent variables) is given by $D_k$:
+
+$D_k=-2[ln(L_k)-ln(L_{perfect})]$
+
+$R_L^2$ is a ratio based on these values, representing the proportion of deviance explained by the current model:
+
+$R_L^2=\frac{D_{null}-D_k}{D_{null}}$
+
+Values range between 0 and 1, with higher values being better.
+
+Other pseudo-$R^2$s include the Cox and Snell index, which has a maximum of .75, and the Nagelkerke index, which rescales the Cox-Snell index to a scale of 0 to 1.
+
+## Extensions of logistic regression
+
+The logistic method can be extended to predict other types of categorical data, although these methods are used less often.
+
+### Multinomial logistic regression
+
+Multinomial variables are categorical variables with more than two categories in no particular order (e.g., race). Logistic regression can be extended to cover multinomial variables by predicting membership in each group relative to a reference group. Thus, for $k$ groups, multinomial logistic regression will return $k-1$ sets of coefficients.
+
+Multinomial logistic regression can be conducted in R using the `multinom()` function in the `nnet` package.
+
+### Ordinal logistic regression
+
+Ordinal variables are categorical variables with more than two *ordered* categories (e.g., educational attainment). In this case, odds ratios refer to the relative odds of each rank relative to the rank below it.
+
+Ordinal logistic regression can be conducted in R using the `polr()` function in the `mass` package.

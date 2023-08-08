@@ -1,0 +1,220 @@
+---
+title: "Poisson Regression"
+format:
+  html:
+    embed-resources: true
+toc: true
+execute:
+  warning: false
+---
+
+## Brief Summary
+
+-   Poisson regression is a method used to model the relationship between one or more IVs and a count DV
+
+-   While linear regression predicts continuous values on a DV, Poisson regression predicts the number of events that occur
+
+## Theory
+
+Regression is a way to model the relationship between one or more independent variables (IVs) and one dependent variable (DV). When your dependent variable is continuous, this is achieved through *linear regression* (aka "ordinary least squares (OLS) regression"). But what happens when our DV is not continuous?
+
+::: callout-note
+### Review
+
+Linear regression assumes that our *residuals* - the difference between the model's predicted values and the actual values of the DV in our data - are just *random noise*. Practically speaking, this means that residuals must be (a) normally distributed and (b) show homoscedasticity (constant variance across levels of the IV or IVs).
+:::
+
+If we try to conduct a linear regression with non-linear outcomes, we break these assumptions. The most common case of regression with non-linear outcomes is when we are predicting a *dichotomous* outcome; this is done with logistic regression, which is covered in-depth in its own document ("Logistic Regression"). Another case that can break these assumptions is conducting regression with *count* outcomes; this uses Poisson regression.
+
+Poisson regression is used to predict count variables, i.e., the number of times a certain event occurs within a particular time (e.g., number of suspensions in a school year, number of errors on a 50-item exam). It is particularly useful when the count variable includes many zeroes (e.g., in the case of suspensions per school year, where most students will have none, but some will have many).
+
+Count variables need their own type of regression because they are typically related to predictors in a non-linear fashion. For example, consider this relationship between teacher-rated misbehavior (as a z-score) and suspensions in a school year:
+
+```{r}
+library(tidyverse)
+set.seed(67280)
+
+custom_function <- function(x) {
+  
+  predicted_value <- exp(x)
+  
+  random_noise <- rnorm(n = length(x), mean = 0, sd = 1)
+  
+  observed_value <- predicted_value + random_noise
+  
+  observed_value[observed_value < 0] <- 0
+  
+  observed_value <- round(observed_value)
+  
+  return(observed_value)
+  
+}
+
+misbehavior <- rnorm(n = 100, mean = 0, sd = 1)
+suspensions <- custom_function(misbehavior)
+
+hist(suspensions, breaks = 12)
+```
+
+Most students have zero suspensions, some have a couple, and a smaller number have a lot. Moreover, the relationship between misbehavior and suspensions is exponential (the line curves up). This is often the case with count data.
+
+```{r}
+suspension_data <- tibble(misbehavior, suspensions)
+
+ggplot(data = suspension_data, aes(misbehavior, suspensions)) +
+  geom_point()
+```
+
+If we try fitting a normal linear regression to these data (the blue line below), we violate our assumptions in a number of ways. First of all, you can see that our residuals are not independent across levels of misbehavior; they are positive at lower levels, then negative, then positive again. That is, our linear regression underestimates suspensions at lower levels of misbehavior, then overestimates it, then underestimates it again. Moreover, when misbehavior is more than one standard deviation below the mean, our linear regression predicts negative suspensions, which doesn't make sense.
+
+```{r}
+ggplot(data = suspension_data, aes(misbehavior, suspensions)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = "y ~ x")
+```
+
+Instead, the Poisson regression fits the data much better.
+
+```{r}
+ggplot(data = suspension_data, aes(misbehavior, suspensions)) +
+  geom_point() +
+  geom_smooth(method = "glm", method.args = list(family = poisson(link = "log")), formula = "y ~ x")
+```
+
+### Link functions
+
+Like logistic regression, Poisson regression uses a "link" function to transform the non-continuous outcome variable into into something that will work with the general linear model. In Poisson regression, the link function is the natural logarithm (or "log"). In order to predict the number of events $Y$ given $X$, we transform it by predicting the log of $Y$.
+
+$log(\hat{Y})=\beta_0+\beta_1X_1+\epsilon$
+
+However, because you can't take the log of zero (it does not exist), we have to build our regression model using the following formula, which is a transformation of the one above.
+
+$e^{log(\hat{Y})}=e^{\beta_0+\beta_1X_1+\epsilon}$
+
+$\hat{Y}=e^{\beta_0+\beta_1X_1+\epsilon}$
+
+In this way, using the log "link" function is different from just applying a log transformation to your outcome variable in your data. If you try to take the log of suspensions, you will get some invalid values (when you ask R for the `log(0)` it returns `-Inf`):
+
+```{r}
+log(suspensions)
+```
+
+This causes problems for `lm()`, which can't predict `-Inf`:
+
+```{r}
+#| error: true
+lm(data = suspension_data, log(suspensions) ~ misbehavior)
+```
+
+When we conduct a Poisson regression with a log *link function*, we're not asking R to do that. Instead, we're asking R to try to create a model in the following format; no need to predict `-Inf`.
+
+$\hat{Y}=e^{\beta_0+\beta_1X_1+\epsilon}$
+
+### The Poisson distribution
+
+Poisson regression assumes that the outcome variable is distributed according to the Poisson distribution. The Poisson distribution is defined by a "rate parameter": the average number of events expected in a time period. In a Poisson distribution, the mean and variance of the distribution are the same. Thus, distributions with small rate parameters (i.e., a small expected value of the count variable) will be narrower and further to the left. Moreover, as all values in the Poisson distribution are positive (something can't happen less than zero times), distributions with lower rate parameters are skewed.
+
+![](images/poisson.png)
+
+The distributions above are given by the following probability function, where $\mu$ is the rate parameter:
+
+$P(Y)=\frac{e^{-\mu}\mu^Y}{Y!}$
+
+For what it's worth, when you have a count variable that approaches a normal distribution (as the Poisson distribution does with higher rate parameters), you can use a normal OLS regression.
+
+## Application
+
+In R, Poisson regression is accomplished through the `glm()` function, with the argument `family = poisson` or (if you want to be more explicit about the link function) `family = poisson(link = "log")`.
+
+```{r}
+poisson_regression <- glm(
+  data = suspension_data,
+  formula = suspensions ~ misbehavior,
+  family = poisson(link = "log")
+)
+
+summary(poisson_regression)
+```
+
+In Poisson regression, coefficients are interpreted as follows: for a one-unit increase in $X$, the predicted rate of events $Y$ is multiplied by $e^b$. To get $e^b$ in R, we use `exp(b)`:
+
+```{r}
+exp(.96)
+```
+
+Thus, for each one-unit increase in misbehavior, we expect the number of suspensions to multiply by 2.6.
+
+As we can see, this is a much better fit to our data than a simple linear regression (in red, below) or even a curvilinear regression (in orange) would produce:
+
+```{r}
+ggplot(data = suspension_data, aes(misbehavior, suspensions)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = "y ~ x", color = "red") +
+  geom_smooth(method = "lm", formula = "y ~ poly(x, 2)", color = "orange") +
+  geom_smooth(method = "glm", method.args = list(family = poisson(link = "log")), formula = "y ~ x", color = "blue")
+```
+
+Like other forms of regression, Poisson regression can accommodate multiple $IV$s, quadratic terms, and interactions.
+
+## Extensions of Poisson regression
+
+### Zero-inflated models
+
+In some situations, our data can have what are known as "excess" zeroes. For example, imagine that our suspension dataset included a number of students who attended a school that didn't give suspensions. For those students, it doesn't matter what their level of misbehavior was - they were never going to be suspended. Ideally, we could identify these students and remove them from the dataset. But there are situations where you cannot know who is an "excess zero" ahead of time.
+
+To deal with this, zero-inflated Poisson regression takes a two-step approach. First, it uses a logistic regression to predict the cases that are excess zeroes. (This can be done by using additional variables to predict the excess zeroes, or by predicting them with an intercept only.) Then, it conducts the Poisson regression, accounting for its predictions about which zeroes are "real" and which ones are "excess."
+
+In the following chunk, I create excess zeroes and then use a zero-inflated Poisson model to predict the relationship between `misbehavior` and `suspensions`. Excess zeroes are predicted in the model by `age`.
+
+```{r}
+library(pscl)
+
+# Create new rows of excess zeroes
+new_rows <- tibble(
+  misbehavior = rnorm(n = 20, mean = 0, sd = 1),
+  suspensions = 0,
+  age = rnorm(n = 20, mean = 13.5, sd = 1)
+)
+
+suspension_data$age <- rnorm(n = 100, mean = 12, sd = 1)
+
+inflated_data <- bind_rows(suspension_data, new_rows)
+
+zero_inflated_regression <- zeroinfl(
+  data = inflated_data,
+  formula = suspensions ~ misbehavior | age
+)
+
+summary(zero_inflated_regression)
+
+exp(.98)
+```
+
+Age is positively associated with being an excess zero. After adjusting for this, a one-unit increase in misbehavior is associated with 2.7 times as many suspensions in a year.
+
+### Negative binomial
+
+A second special case of Poisson regression is the negative binomial model. This is used when the count variable's conditional variance (variance, given a certain level of $X$ ) is larger than its conditional mean, known as "over-dispersion." When this happens, the traditional Poisson model is likely to underestimate the confidence interval around the regression line.
+
+First, let's compare the mean and variance of `suspensions` at various levels of `misbehavior`.
+
+```{r}
+suspension_data %>%
+  mutate(misbehavior_categorical = cut(misbehavior, breaks = seq(-2, 2, 1))) %>%
+  group_by(misbehavior_categorical) %>%
+  summarize(mean = mean(suspensions),
+            var = var(suspensions))
+```
+
+Our data do not appear to be over-dispersed. However, for the sake of instruction, this is how you would estimate a negative binomial regression with these data:
+
+```{r}
+library(MASS)
+
+negative_binomial_regression <- glm.nb(
+  data = inflated_data,
+  formula = suspensions ~ misbehavior
+)
+
+summary(negative_binomial_regression)
+```

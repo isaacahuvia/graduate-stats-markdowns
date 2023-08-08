@@ -1,0 +1,138 @@
+---
+title: "Evaluating Classification Models"
+format:
+  html:
+    embed-resources: true
+toc: true
+execute:
+  warning: false
+---
+
+## Brief Summary
+
+-   Classification models include logistic regression, as well as a variety of machine learning techniques
+
+-   While regression models are evaluated on the amount of error (the difference between predicted and observed values), classification models are evaluated on the accuracy of their predictions
+
+## Assessing predictions
+
+We can assess predictions with a variety of metrics. Consider our example from "Logistic Regression": a logistic regression using data from the Titanic to predict survival based on age, sex, and ticket class.
+
+```{r}
+# Load packages
+library(tidyverse)
+library(titanic)
+library(scales)
+
+# Load data from package
+data("titanic_train")
+
+# Clean data
+titanic_data <- titanic_train %>%
+  mutate(Class = case_when(
+    Pclass == 1 ~ "First Class",
+    Pclass == 2 ~ "Second Class",
+    Pclass == 3 ~ "Third Class"
+  )) %>%
+  drop_na(Survived, Age, Sex, Class)
+
+# Fit logistic regression
+survival_by_age_sex_class <- glm(
+  data = titanic_data,
+  formula = Survived ~ Age + Sex + Class,
+  na.action = na.omit,
+  family = "binomial"
+)
+
+# Summarize regression 
+summary(survival_by_age_sex_class)
+```
+
+In reality, 290 (41%) of those aboard the Titanic survived.
+
+```{r}
+titanic_data %>%
+  count(Survived) %>%
+  mutate(pct = percent(n / sum(n)))
+```
+
+Using a cutoff of p(survived) \> .5, our model predicts that 275 (38%) survived.
+
+```{r}
+# Get predictions and save them to a new variable in titanic_data
+titanic_data$PredictedProbability <- predict(
+  object = survival_by_age_sex_class, 
+  newdata = titanic_data, 
+  type = "response"
+)
+
+# Use a cutoff of p(survival) > .5 to guess who survived vs who didn't
+titanic_data$PredictedSurvival <- titanic_data$PredictedProbability > .5
+
+titanic_data %>%
+  count(PredictedSurvival) %>%
+  mutate(pct = percent(n / sum(n)))
+```
+
+We can also compare our predictions to the true values with `count()`.
+
+```{r}
+titanic_data %>%
+  count(PredictedSurvival, Survived) %>%
+  mutate(pct = percent(n / sum(n)))
+```
+
+### Accuracy
+
+The most straightforward way to assess a classification model is to report the proportion of predictions it made correctly; this is known as the **accuracy**.
+
+In this case, our model guessed correctly (356 + 207) = 563 times out of 714. Our accuracy is **78.8%**.
+
+### Sensitivity and specificity
+
+Other metrics break this down further. **Sensitivity** (also known as the true positive rate) refers to the ability of the model to correctly identify true cases. In this case, it is the model's ability to correctly predict that someone will survive, out of those who do in fact survive. In a testing context, this would be the test's ability to correctly identify true cases, out of all the actual true cases. In this case, our model correctly identified 207 out of the 290 who survived, for a sensitivity of **71.4%**.
+
+**Specificity** (also known as the true negative rate) refers to the ability of the model to correctly identify non-cases. In this case, it is the model's ability to correctly predict that someone will not survive, out of those who do in fact not survive. In a testing context, this would be the test's ability to correctly identify non-cases, out of all of the actual non-cases. In this case, our model correctly identified 356 out of the 424 people to not survive, for a specificity of **84.0%**.
+
+### Positive and negative predictive value
+
+You might also be interested in the *value* of a certain prediction: the chance that a certain prediction is accurate. Positive and negative predictive value are related to sensitivity and specificity, but have a different denominator. For example, while sensitivity refers to the proportion of true positives out of all *actual positives*, the positive predictive value refers to the proportion of true positives out of all *positive tests*.
+
+![From http://www.differencebetween.net/science/health/difference-between-sensitivity-and-specificity/](images/Difference-Between-Sensitivity-and-Specificity-768x485.jpeg)
+
+In our case, of the people we predicted survived (275), 207 actually did; a **positive predictive value** of **75.3%**.
+
+Of the people we predicted did not survive (439), 356 actually didn't; a **negative predictive value** of **81.1%**.
+
+### ROC curves
+
+Generally speaking, classification models won't just give you a binary prediction for each case (e.g., true or false, yes or no, group A or group B). Instead, they will give you the *probability* of each case being a true case. In the above examples, we picked a cutoff of p(survived) \> .5 to determine whether or not we think somebody survived. However, other cutoffs are often more useful when making predictions.
+
+The decision of where to set your cutoff between a positive and a negative case presents a trade-off between sensitivity and specificity. At the extreme, a cutoff of p = 0 (here, predicting everybody survived) would grant perfect sensitivity but 0% specificity. Likewise, a cutoff of p = 1 would ensure that we don't have any false positives, but only because we predict no positives at all. The **receiver operating characteristic (ROC) curve** illustrates this trade-off.
+
+```{r}
+library(pROC)
+
+roc <- roc(titanic_data$Survived, titanic_data$PredictedProbability)
+
+plot(roc)
+print(roc) 
+```
+
+When we choose lower cutoffs (the upper-right corner of our curve), we maximize sensitivity at the expense of specificity. When we choose higher cutoffs (the lower-left corner), we maximize specificity at the expense of sensitivity. Realistically, we want to be somewhere in the middle, but where exactly depends on personal judgment. In cases where the cost of a false positive is high (e.g., recommending a patient for a risky surgery), you may wish to prioritize specificity. When the cost of a false *negative* is high (e.g., testing a patient for a highly contagious disease), you may wish to prioritize sensitivity.
+
+ROC curves also provide us with another metric of model performance, commonly used in machine learning contexts: the **area under the curve (AUC)**. AUC ranges from 0 to 1, with higher values being better, and .5 being the realistic worst-case-scenario (flipping a coin will get you an AUC of .5, so anything lower means something is going very wrong).
+
+```{r}
+print(roc)
+```
+
+Our AUC is **.85**.
+
+## Comparing models
+
+Models can be compared to one another based on the statistics above. There are also additional tests and statistics that can be used for the specific purpose of comparing models. These are all based on the model's *likelihood (*$L$): how likely we would be to see the data we have, given that the relationships in the data are described by our model. (You may recall that some pseuod-$R^2$ statistics in logistic regression are also based on $L$).
+
+Sometimes, you want to compare two or more nested models. A model is nested within another model when they differ by the presence or absence of one or more predictors. For example, you may wish to determine whether $X_3$ is a useful predictor by comparing the model $Y=\beta_0+\beta_1X_1+\beta_2X_2+\beta_3X_3$ to the model $Y=\beta_0+\beta_1X_1+\beta_2X_2$. This can be done by using a likelihood ratio $\chi^2$ test or a Wald test, both of which compare the likelihood of nested models.
+
+You can also calculate statistics to compare models that aren't nested. The most common of these are the Akaike Information Criterion ($AIC$) and the Bayesian Information Criterion ($BIC$). While various formulas exist for both, both provide a measure of model fit that balances fit against model parsimony (i.e., given equal fit between two models, the models with fewer predictors will be selected).

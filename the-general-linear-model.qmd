@@ -1,0 +1,178 @@
+---
+title: "The General Linear Model"
+format:
+  html:
+    embed-resources: true
+toc: true
+execute:
+  warning: false
+---
+
+## Brief Summary
+
+-   All forms of regression (ordinary least squares regression, logistic regression, etc.) are based on the same method: using some linear combination of IVs to predict a DV. This is the **general linear model**
+
+-   The building blocks of the general linear model are (a) a linear combination of IVs and their predicted values, (b) a "link function" linking the DV to these predicted values, and (c) a probability distribution describing how our data are distributed around our regression line
+
+-   Despite its name, the general linear model can accommodate non-linear relationships between IVs and a DV in a variety of ways
+
+## Theory
+
+The general linear model describes the relationship between one DV, $Y$, and one or more IVs, $X$. The "general linear model" is exactly that:
+
+-   "general": It can be applied to a variety of different situations and types of relationships between $X$ and $Y$
+
+-   "linear": We always explain $Y$ as some linear combination of $X$s (although the relationship between $X$ and $Y$ doesn't actually have to be linear - more on that below)
+
+-   "model": It describes the functional relationship between $X$ and $Y$
+
+The simplest version of the linear model, ordinary least squares (OLS) regression, is given by the following formula. What we expect $Y$ to be (its "expected value", $E(Y)$) is a function of some baseline value ($\beta_0$), plus some independent variable ($X$) times the slope of the relationship between $X$ and $E(Y)$ ($\beta_1$).
+
+$E(Y) = \beta_0 + \beta_1X$
+
+This equation is really no different from the equation of a straight line from Algebra I. We're predicting $y$ ($E(Y)$) with $x$ ($X$), its slope $m$ ($\beta_1$), and the y-intercept $b$ ($\beta_0$).
+
+$y = mx + b$
+
+![A linear regression line where the intercept $\beta_0$ is 9.5 and the slope $\beta_1$ is 2.1](images/line.png)
+
+Moreover, when we apply our line to actual data, we recognize that our data points won't fit perfectly on the line; there will be some *error*. In a linear regression, we assume that our data points are normally distributed around our regression line. In other forms of the general linear model, our data points can have other distributions.
+
+![Visualization of where actual data points would fall in relation to our regression line](images/with points.png)
+
+Thus, not only is $E(Y)$ equal to $\beta_0 + \beta_1X$, but our actual observed values $Y_i$ are distributed normally around $E(Y)$. The distribution of actual values around the regression line has a mean of $E(Y)$ and a standard deviation of $\epsilon$ and can be described in the following notation.
+
+$Y_i\sim N(E(Y),\epsilon)$
+
+Putting it all together, we can explain a given value $Y_i$ as a linear combination of the regression intercept ($\beta_0$), $X_i$, its slope ($\beta_1$), and some random error $\epsilon_i$.
+
+$Y_i=\beta_0+\beta_1X_i+\epsilon_i$
+
+## Visualizing the Linear Model
+
+Throughout these markdown files, we will use code to illustrate concepts. This code creates some simulated data we will use to understand the general linear model.
+
+```{r}
+# Load package "tidyverse", which we will use throughout this file
+# The first time you wish to use a package, you need to install it first using "install.packages("[package name]"). Afterwards, you can just use library() to load it
+library(tidyverse)
+
+# Set a "seed" for random number generation. This ensures that we generate the same random numbers each time we use this script
+# This is necessary for making replicable scripts when you use any kind of randomization
+set.seed(6702847)
+
+# Simulate our x variable; 100 values with a mean of 5 and an SD of 1
+x <- rnorm(n = 100, mean = 5, sd = 1)
+
+# Simulate our y variable; 2*x plus some random noise (100 values with a mean of 0 and an SD of 1)
+y <- 2*x + rnorm(n = 100, mean = 0, sd = 1)
+
+# Combine these variables into a dataset ("tibble")
+data <- tibble(x, y)
+
+# Plot these points and a regression line
+data %>%
+  ggplot(aes(x, y)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = "y ~ x", se = F)
+```
+
+## Error in the Linear Model
+
+Part of what makes the general linear model so useful is that it accounts for **error**: the difference between our predicted values and the actual values of the DV, resulting from all of the confounding factors that keep us from having a perfect 1:1 relationship between $X$ (our IV) and $Y$ (our DV).
+
+When we estimate a linear model with our data, we can actually see what these errors are: the difference between our observed data point and the value of $Y$ that we would expect it to have (the regression line). We call these errors "residuals" and refer to them with $e$.
+
+Focus on the black dot below at $X = 45$. This is $Y_i$. Its value is 108, 4 more than what our regression line would predict its value to be at $X=45$, $E(Y_i)$, which is 104. Thus, our residual $\epsilon_i$ is 4.
+
+![](images/with points-01.png)
+
+We can see that this is true in our regression equation, as well.
+
+$Y_i=\beta_0+\beta_1X_i+\epsilon_i$
+
+Becomes
+
+$108=9.5+2.1(45)+4$
+
+## OLS Regression in R
+
+Ordinary least squares (OLS) regression can be conducted in R using the `lm()` function.
+
+```{r}
+ols <- lm(
+  data = data,
+  y ~ x
+)
+
+summary(ols)
+```
+
+Ordinary least squares regression comes with its own statistical tests (i.e., of $b$, our estimated regression coefficient or slope), which we will not cover here.
+
+## Assumptions in the Linear Model
+
+There are many assumptions that we make when we use an ordinary least squares regression model. One of these assumptions is that our residuals represent *random error*; that is, they are normally distributed and don't depend on $X$. This will be more or less true when $X$ and $Y$ are continuous variables and the relationship between $X$ and $Y$ is truly linear, as it is in our simulated data.
+
+```{r}
+residuals <- resid(ols)
+
+# Histogram of residuals
+hist(residuals)
+
+# Residuals by X
+plot(data$x, residuals)
+```
+
+However, there are times when we want to model relationships between other dependent variables, e.g., dichotomous variables (see "Logistic Regression") and count variables (see "Poisson Regression). If we try this with OLS regression, we will violate our assumptions (more on that in the other files). We can still use the general logic of linear regression, but we need to modify our equation slightly to accommodate new types of data. This is when the *general* part of the general linear model comes in.
+
+## Extending Linear Regression with "Link Functions"
+
+As stated above, our general linear regression is defined by two equations. The first describes our expected value of $Y$ based on a linear combination of IVs (in this case, just $X$).
+
+$E(Y) = \beta_0 + \beta_1X$
+
+The second describes the shape of the distribution of true values around our predicted values.
+
+$Y_i\sim N(E(Y),\epsilon)$
+
+The general linear model includes these two components plus a third component: the "link function." The link function transforms the outcome variable $Y$ to make it possible for us to predict it using a linear combination of IVs. For example, if we want to predict the probability of an event happening (as in logistic regression), we use the "logit" link function to transform our probability (which is not continuous, as it can only be within 0 and 1) and turns it into a continuous variable: the log of the odds of the probability:
+
+$logit(P) = ln(odds) = ln(\frac{P}{1-P})$
+
+Thus, the general linear model equation for a logistic regression is:
+
+$logit(P)=\beta_0+\beta_1X_1+\epsilon$
+
+The logit function transforms $P$ into a variable with a full range of values. This allows us to predict values using a linear combination of IVs.
+
+```{r}
+# Probabilities from 0 to 1
+p <- seq(0, 1, .001)
+
+# Logit-transformed probabilities
+logit <- log(p / (1 - p))
+
+# Plot with actual probability on the x-axis, logit-transformed probability on the y-axis
+plot(p, logit)
+```
+
+Out new outcome, $logit(P)$, now has a nice range of values that can be predicted by a linear combination of IVs.
+
+```{r}
+hist(logit)
+```
+
+The probability distribution of $p_i$ is also unique in logistic regression:
+
+$P_i\sim Bernoulli(P)$
+
+These unique cases of the general linear model are covered in other documents, but here is a brief overview of how they compare:
+
+| Method              | Outcome                            | Predictors                                                           | Link Function                                                                             | Probability Distribution    |
+|----------------------|-------------|-------------|-------------|-------------|
+| OLS Regression      | The expected value of Y, $E(Y)$    | Some linear combination of predictors, e.g., $\beta_0 + \beta_1x_1$  | None (a.k.a., the "identity" link function; the outcome is *identical* to the prediction) | $Y_i\sim N(E(Y),\epsilon)$  |
+| Logistic Regression | The probability of some event, $P$ | Same as above                                                        | Logit: $ln(\frac{P}{1-P})$                                                                | $P_i\sim Bernoulli(P)$      |
+| Poisson Regression  | The count of some events, $Y$      | Same as above                                                        | Log: $log(Y)$                                                                             | $Y_i\sim Poisson(Y)$        |
+
+Note that in every case the outcome is predicted by some linear combination of independent variables; thus, even when we aren't fitting a straight line to the data, we're still using the general *linear* model.
